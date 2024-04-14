@@ -70,6 +70,7 @@ void StartControlTask(void const * argument);
 /* USER CODE BEGIN PFP */
 
 void rotateServo(int angle);
+int lightPercent(int lux);
 
 /* USER CODE END PFP */
 
@@ -443,6 +444,20 @@ void rotateServo(int angle) {
     htim2.Instance->CCR1 = value;
 }
 
+int lightPercent(int lux) {
+    int min = 100;
+    int max = 3072;
+
+    int delta = max - min;
+
+    int minCappedLux = lux < min ? min : lux;
+    int cappedLux = minCappedLux > max ? max : minCappedLux;
+
+    double result = ((cappedLux - min) / (double) delta) * 100;
+
+    return (int) result;
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartServoTask */
@@ -455,16 +470,26 @@ void rotateServo(int angle) {
 void StartServoTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
+    osEvent currLuxEvent;
+    char msg[20] = {'\0'};
+
     /* Infinite loop */
     for (;;) {
-        for (int i = 0; i <= 180; i += 10) {
-            rotateServo(i);
-            osDelay(100);
-        }
+        currLuxEvent = osMessageGet(controlQueueHandle, osWaitForever);
 
-        osDelay(1000);
-        rotateServo(0);
-        osDelay(1000);
+        if (currLuxEvent.status == osEventMessage) {
+            int currLux = (int) currLuxEvent.value.v;
+
+            int percentLux = lightPercent(currLux);
+
+            int angle = (int) (percentLux * 1.8);
+
+            sprintf(msg, "Light: %d, percent: %d, angle: %d \r\n", currLux, percentLux, angle);
+
+            HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), HAL_MAX_DELAY);
+
+            rotateServo(angle);
+        }
     }
   /* USER CODE END 5 */
 }
@@ -491,7 +516,9 @@ void StartControlTask(void const * argument)
 
         HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), HAL_MAX_DELAY);
 
-        osDelay(1000);
+        osMessagePut(controlQueueHandle, lux, osWaitForever);
+
+        osDelay(500);
     }
   /* USER CODE END StartControlTask */
 }
