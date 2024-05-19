@@ -6,7 +6,6 @@
 
 int OVERSAMPLING_SETTING = 3;
 
-
 int isBarometerReady(I2C_HandleTypeDef hi2c1, UART_HandleTypeDef huart1) {
     HAL_StatusTypeDef res = HAL_I2C_IsDeviceReady(&hi2c1, BMP_BAROMETER_ADDRESS, 1, 100);
     char msg[50] = {'\0'};
@@ -84,6 +83,17 @@ long getPressure(I2C_HandleTypeDef hi2c1) {
     p = p + (x1 + x2 + 3791) / (int32_t) pow(2, 4);
 
     return p;
+}
+
+long getPressureAvg(I2C_HandleTypeDef hi2c1, int measurements, int delay) {
+    long acc = 0;
+
+    for (int i = 0; i < measurements; i++) {
+        acc += getPressure(hi2c1);
+        osDelay(delay);
+    }
+
+    return acc / measurements;
 }
 
 double computeAltitude(long p) {

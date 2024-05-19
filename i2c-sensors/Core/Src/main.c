@@ -119,6 +119,9 @@ int main(void) {
     MX_USART1_UART_Init();
     /* USER CODE BEGIN 2 */
 
+    configureMPU(hi2c1);
+    configureCompass(hi2c1);
+
     /* USER CODE END 2 */
 
     /* USER CODE BEGIN RTOS_MUTEX */
@@ -357,10 +360,6 @@ void println(char *msg) {
 void StartSensorsReadTask(void const *argument) {
     /* USER CODE BEGIN 5 */
 
-//    todo: move to i2c init function
-    configureMPU(hi2c1);
-    configureCompass(hi2c1);
-
     int gyroAccelerometerReady = isAccelerometerReady(hi2c1, huart1);
     int barometerReady = isBarometerReady(hi2c1, huart1);
     int compassReady = isCompassReady(hi2c1, huart1);
@@ -379,11 +378,10 @@ void StartSensorsReadTask(void const *argument) {
         println("===================== \r\n");
     }
 
-    long startPressure = getPressure(hi2c1);
+    long startPressure = getPressureAvg(hi2c1, 10, 100);
     double startAltitude = computeAltitude(startPressure);
 
     osDelay(1000);
-    HAL_StatusTypeDef res;
     /* Infinite loop */
     for (;;) {
         println("===================== \r\n");
@@ -409,7 +407,7 @@ void StartSensorsReadTask(void const *argument) {
 
         println("===================== \r\n");
 
-        long p = getPressure(hi2c1);
+        long p = getPressureAvg(hi2c1, 3, 10);
         double altitude = computeAltitude(p);
 
         sprintf(msg, "Pressure: %ld Pa \r\n", p);
