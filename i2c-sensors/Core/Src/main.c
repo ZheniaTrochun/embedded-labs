@@ -50,6 +50,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
@@ -71,6 +73,8 @@ static void MX_I2C1_Init(void);
 
 static void MX_USART1_UART_Init(void);
 
+static void MX_TIM2_Init(void);
+
 void StartSensorsReadTask(void const *argument);
 
 void StartOutputTask(void const *argument);
@@ -78,6 +82,16 @@ void StartOutputTask(void const *argument);
 /* USER CODE BEGIN PFP */
 
 void println(char *msg);
+
+void rotateServo(double angle);
+
+void testServo();
+
+void visualizeDeclination(double declination);
+
+void visualizeRotationSpeed(double rotation);
+
+void visualizePosition(double acceleration);
 
 /* USER CODE END PFP */
 
@@ -117,8 +131,10 @@ int main(void) {
     MX_USART2_UART_Init();
     MX_I2C1_Init();
     MX_USART1_UART_Init();
+    MX_TIM2_Init();
     /* USER CODE BEGIN 2 */
 
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
     configureMPU(hi2c1);
     configureCompass(hi2c1);
 
@@ -179,22 +195,27 @@ void SystemClock_Config(void) {
     /** Configure the main internal regulator output voltage
     */
     __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
     /** Initializes the RCC Oscillators according to the specified parameters
     * in the RCC_OscInitTypeDef structure.
     */
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
     RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-    RCC_OscInitStruct.PLL.PLLM = 16;
-    RCC_OscInitStruct.PLL.PLLN = 336;
-    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    RCC_OscInitStruct.PLL.PLLM = 4;
+    RCC_OscInitStruct.PLL.PLLN = 180;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
     RCC_OscInitStruct.PLL.PLLQ = 2;
     RCC_OscInitStruct.PLL.PLLR = 2;
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+
+    /** Activate the Over-Drive mode
+    */
+    if (HAL_PWREx_EnableOverDrive() != HAL_OK) {
         Error_Handler();
     }
 
@@ -204,10 +225,10 @@ void SystemClock_Config(void) {
                                   | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV8;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK) {
         Error_Handler();
     }
 }
@@ -241,6 +262,59 @@ static void MX_I2C1_Init(void) {
     /* USER CODE BEGIN I2C1_Init 2 */
 
     /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void) {
+
+    /* USER CODE BEGIN TIM2_Init 0 */
+
+    /* USER CODE END TIM2_Init 0 */
+
+    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+    TIM_MasterConfigTypeDef sMasterConfig = {0};
+    TIM_OC_InitTypeDef sConfigOC = {0};
+
+    /* USER CODE BEGIN TIM2_Init 1 */
+
+    /* USER CODE END TIM2_Init 1 */
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler = 900 - 1;
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = 1000 - 1;
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_Base_Init(&htim2) != HAL_OK) {
+        Error_Handler();
+    }
+    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+    if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK) {
+        Error_Handler();
+    }
+    if (HAL_TIM_PWM_Init(&htim2) != HAL_OK) {
+        Error_Handler();
+    }
+    sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+    sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK) {
+        Error_Handler();
+    }
+    sConfigOC.OCMode = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse = 0;
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+    if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
+        Error_Handler();
+    }
+    /* USER CODE BEGIN TIM2_Init 2 */
+
+    /* USER CODE END TIM2_Init 2 */
+    HAL_TIM_MspPostInit(&htim2);
 
 }
 
@@ -348,6 +422,48 @@ void println(char *msg) {
     HAL_UART_Transmit(&huart1, (uint8_t *) msg, strlen(msg), HAL_MAX_DELAY);
 }
 
+void rotateServo(double angle) {
+    double degreesInOneStep = 180.0 / (125 - 25);
+
+    int value = (int) (angle / degreesInOneStep) + 25;
+
+    htim2.Instance->CCR1 = value;
+}
+
+void testServo() {
+    rotateServo(0);
+    println("Rotate servo 0 \r\n");
+    osDelay(1000);
+    rotateServo(90);
+    println("Rotate servo 90 \r\n");
+    osDelay(1000);
+    rotateServo(180);
+    println("Rotate servo 180 \r\n");
+    osDelay(1000);
+    rotateServo(90);
+    println("Servo ready \r\n");
+}
+
+void visualizeDeclination(double declination) {
+    if (declination > 180) {
+        double adjusted = ((360 - declination) / 2) + 90;
+        rotateServo(adjusted);
+    } else {
+        double adjusted = 90 - (declination / 2);
+        rotateServo(adjusted);
+    }
+}
+
+void visualizeRotationSpeed(double rotation) {
+    double adjusted = 90 + rotation * 10;
+    rotateServo(adjusted);
+}
+
+void visualizePosition(double rotation) {
+    double adjusted = (rotation + 1) * 90;
+    rotateServo(adjusted);
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartSensorsReadTask */
@@ -380,6 +496,8 @@ void StartSensorsReadTask(void const *argument) {
 
     long startPressure = getPressureAvg(hi2c1, 10, 100);
     double startAltitude = computeAltitude(startPressure);
+
+    testServo();
 
     osDelay(1000);
     /* Infinite loop */
@@ -425,6 +543,14 @@ void StartSensorsReadTask(void const *argument) {
         println(msg);
 
         println("===================== \r\n");
+
+//        visualizeDeclination(degrees);
+        visualizePosition(accData.xAcc);
+//        visualizePosition(accData.yAcc);
+//        visualizePosition(accData.zAcc);
+//        visualizeRotationSpeed(accData.xGyro);
+//        visualizeRotationSpeed(accData.yGyro);
+//        visualizeRotationSpeed(accData.zGyro);
 
         osDelay(500);
     }
